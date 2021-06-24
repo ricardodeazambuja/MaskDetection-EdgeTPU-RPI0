@@ -1,7 +1,8 @@
-import io
 import time
+from io import BytesIO
 import numpy as np
-import picamera
+
+from picamera import PiCamera
 
 
 from PIL import Image
@@ -14,7 +15,7 @@ from pycoral.utils.edgetpu import make_interpreter
 
 
 DEBUG = True
-THRESHOLD = 0.5
+THRESHOLD = 0.65 # current model has a tendency to hallucinate and see masks on white backgrounds :D
 
 def draw_objects(draw, objs, labels, color='red'):
   """Draws the bounding box and label for each object."""
@@ -27,9 +28,9 @@ def draw_objects(draw, objs, labels, color='red'):
               fill=color)
     
 def process_img(image, threshold=0.5):
-    _, mask_scale = common.set_resized_input(mask_interpreter, image.size, lambda size: image.resize(size, Image.NEAREST))
+    common.set_input(mask_interpreter, image)
     mask_interpreter.invoke()
-    mask_objs = detect.get_objects(mask_interpreter, threshold, mask_scale)
+    mask_objs = detect.get_objects(mask_interpreter, threshold, (1.0,1.0))
     return mask_objs
     
 print("Initializing EdgeTPU... mask model")
@@ -39,48 +40,41 @@ mask_interpreter.allocate_tensors()
 mask_input_details = mask_interpreter.get_input_details()
 mask_output_details = mask_interpreter.get_output_details()
 
-
-print("Initializing picamera...")
-# See https://picamera.readthedocs.io/en/release-1.13/api_camera.html
-# for details about the parameters:
-frameWidth = 256
-frameHeight = 256
-frameRate = 5
-contrast = 40
-
-# Set the picamera parametertaob
-camera = picamera.PiCamera()
-camera.resolution = (frameWidth, frameHeight)
-camera.framerate = frameRate
-# camera.contrast = contrast
-camera.video_stabilization = True
-camera.video_denoise = True
-#camera.rotation = 180
-
+mask_objs = []
 print("Starting...")
 with open('detections.txt','w') as dfile:
         # Start the video process
-        stream = io.BytesIO()    
+        stream = BytesIO()    
         time.sleep(2)
         try:
-            for i,_ in enumerate(camera.capture_continuous(stream, format='rgb')):
-                start = time.perf_counter()
-                stream.truncate()
-                stream.seek(0)
-                image = Image.fromarray(np.frombuffer(stream.getvalue(), dtype=np.uint8).reshape((frameWidth,frameHeight,3)))
-                if image:
-                    curr_time = time.ctime()
-                    mask_objs = process_img(image, threshold=THRESHOLD)
-                    for obj in mask_objs:
-                        output = f"{i};{start};{curr_time};{mask_labels.get(obj.id)};{obj.id};{obj.score};{obj.bbox}\n"
-                        dfile.write(output)
-                        if DEBUG:
-                            print(output)
-                print(f'{i}: {(time.perf_counter() - start) * 1000:.2f} ms\n')
+            with PiCamera() as camera:
+                camera.resolution = (640, 480)
+                camera.framerate = 30
+                camera.video_stabilization = True
+                camera.video_denoise = True
+                for i,_ in enumerate(camera.capture_continuous(stream,
+                                                     format='rgb',
+                                                     use_video_port=True,
+                                                     resize=(320, 320))):
+
+                    start = time.perf_counter()
+                    stream.truncate()
+                    stream.seek(0)
+                    image = np.frombuffer(stream.getvalue(), dtype=np.uint8).reshape((320,320,3))
+                    if image.size:
+                        curr_time = time.ctime()
+                        mask_objs = process_img(image, threshold=THRESHOLD)
+                        for obj in mask_objs:
+                            output = f"{i};{start};{curr_time};{mask_labels.get(obj.id)};{obj.id};{obj.score};{obj.bbox}\n"
+                            dfile.write(output)
+                            if DEBUG:
+                                print(output)
+                    print(f'{i}: {(time.perf_counter() - start) * 1000:.2f} ms\n')
         except KeyboardInterrupt:
             pass
         finally:
-            if DEBUG:
+            if DEBUG and image.size:
+                image = Image.fromarray(image)
                 dimage = ImageDraw.Draw(image)
                 if len(mask_objs):
                     draw_objects(dimage, mask_objs, mask_labels)
