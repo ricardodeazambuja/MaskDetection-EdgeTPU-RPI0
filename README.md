@@ -6,5 +6,7 @@ If you are using the [Maple Syrup Pi Camera](https://github.com/ricardodeazambuj
 git clone https://github.com/ricardodeazambuja/MaskDetection-EdgeTPU-RPI0.git
 ```
 
+To train your own models you can use [this notebook](EdgeTPU_MaskDetection_Training_(Transfer_Learning).ipynb) as a base.
+
 ## Acknowledgments:
 * https://github.com/Namburger/edgetpu-ssdlite-mobiledet-retrain
