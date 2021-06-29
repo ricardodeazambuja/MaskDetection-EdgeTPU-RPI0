@@ -10,3 +10,7 @@ To train your own models you can use [this notebook](EdgeTPU_MaskDetection_Train
 
 ## Acknowledgments:
 * https://github.com/Namburger/edgetpu-ssdlite-mobiledet-retrain
+
+
+## Disclaimer
+* Use it at your own risk and, please, [don't be evil](https://www.youtube.com/watch?v=b23wrRfy7SM) ;)
